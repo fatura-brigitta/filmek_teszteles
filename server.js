@@ -137,6 +137,15 @@ app.delete("/forgalmazok/:id", async (req, res) => {
 });
 
 
-const server = app.listen(3000, () => console.log("Server: http://localhost:3000"));
-module.exports = server;
+// Exportáljuk az app-ot és a modelleket teszteléshez
+module.exports = {
+  app,
+  Film,
+  Forgalmazo
+};
+
+// Csak akkor futtatunk, ha közvetlenül hívják fel
+if (require.main === module) {
+  const server = app.listen(3000, () => console.log("Server: http://localhost:3000"));
+}
 
