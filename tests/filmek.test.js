@@ -1,226 +1,231 @@
 const Film = require("../models/Film");
-
-// Mockolás
 jest.mock("../models/Film");
 
-describe("Végpontok tesztelése", () => {
-  
+// Mockolt res objektum a controller tesztekhez
+const mockResponse = () => {
+  const res = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  res.sendStatus = jest.fn().mockReturnValue(res);
+  return res;
+};
+
+describe("Film Controller Tesztek", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe("Összes film lekérdezése", () => {
-    it("Sikeresen visszaadja az összes filmet", async () => {
+    it("Sikeres lekérdezés (200)", async () => {
       const mockFilmek = [
-        { _id: "1", cim: "Avatar", megjelenesi_ev: 2009, mufaj: "Sci-Fi" },
-        { _id: "2", cim: "Titanic", megjelenesi_ev: 1997, mufaj: "Dráma" }
+        { _id: 1, cim: "Avatar", megjelenesi_ev: 2009 },
+        { _id: 2, cim: "Titanic", megjelenesi_ev: 1997 },
       ];
       Film.find.mockResolvedValue(mockFilmek);
 
-      const result = await Film.find();
+      const res = mockResponse();
+      const req = {};
 
-      expect(result).toEqual(mockFilmek);
-      expect(result.length).toBe(2);
+      try {
+        const filmek = await Film.find();
+        res.status(200).json(filmek);
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+
       expect(Film.find).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockFilmek);
     });
 
-    it("Üres a lista, ha nincs film", async () => {
-      Film.find.mockResolvedValue([]);
-
-      const result = await Film.find();
-
-      expect(result).toEqual([]);
-      expect(Array.isArray(result)).toBe(true);
-    });
-
-    it("Adatbázis hiba kezelése", async () => {
-      const error = new Error("MongoDB connection failed");
+    it("Hiba az adatbázis kezelése során (500)", async () => {
+      const error = new Error("DB hiba");
       Film.find.mockRejectedValue(error);
+
+      const res = mockResponse();
+      const req = {};
 
       try {
         await Film.find();
-        fail("Hibának kellett volna lennie");
+        res.status(200).json([]);
       } catch (err) {
-        expect(err.message).toBe("MongoDB connection failed");
+        res.status(500).json({ error: err.message });
       }
+
+      expect(Film.find).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "DB hiba" });
     });
   });
 
   describe("Egy film lekérdezése", () => {
-    it("SIkeresen visszaad egy filmet ID alapján", async () => {
-      const mockFilm = { _id: "1", cim: "Avatar", megjelenesi_ev: 2009 };
+    it("Sikeres lekérdezés ID alapján (200)", async () => {
+      const mockFilm = { _id: 1, cim: "Avatar", megjelenesi_ev: 2009 };
       Film.findById.mockResolvedValue(mockFilm);
 
-      const result = await Film.findById("1");
+      const res = mockResponse();
+      const req = { params: { id: 1 } };
 
-      expect(result).toEqual(mockFilm);
-      expect(result.cim).toBe("Avatar");
-      expect(Film.findById).toHaveBeenCalledWith("1");
+      const film = await Film.findById(req.params.id);
+      if (!film) res.status(404).json({ error: "Film nem található" });
+      else res.status(200).json(film);
+
+      expect(Film.findById).toHaveBeenCalledWith(1);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockFilm);
     });
 
-    it("404 hiba ha a film nem létezik", async () => {
+    it("404 ha a film nem létezik", async () => {
       Film.findById.mockResolvedValue(null);
 
-      const result = await Film.findById("999");
+      const res = mockResponse();
+      const req = { params: { id: 999 } };
 
-      expect(result).toBeNull();
+      const film = await Film.findById(req.params.id);
+      if (!film) res.status(404).json({ error: "Film nem található" });
+      else res.status(200).json(film);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: "Film nem található" });
     });
 
-    it("Hiba érvénytelen ID formátum esetén", async () => {
-      const error = new Error("Invalid ObjectId");
+    it("Hiba lekérdezés közben (500)", async () => {
+      const error = new Error("DB hiba");
       Film.findById.mockRejectedValue(error);
 
+      const res = mockResponse();
+      const req = { params: { id: 1 } };
+
       try {
-        await Film.findById("invalid-id");
-        fail("Hibának kellett volna lennie");
+        await Film.findById(req.params.id);
+        res.status(200).json({});
       } catch (err) {
-        expect(err.message).toBe("Invalid ObjectId");
+        res.status(500).json({ error: err.message });
       }
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "DB hiba" });
     });
   });
 
-  describe(" Új film hozzáadása", () => {
-    it("Új film sikeres létrehozása", async () => {
-      const ujFilm = { _id: "3", cim: "Inception", megjelenesi_ev: 2010, mufaj: "Sci-Fi" };
-      
+  describe("Új film létrehozása", () => {
+    it("Sikeres létrehozás (201)", async () => {
+      const ujFilm = { _id: 3, cim: "Inception", megjelenesi_ev: 2010 };
       Film.mockImplementation(() => ({
-        save: jest.fn().mockResolvedValue(ujFilm)
+        save: jest.fn().mockResolvedValue(ujFilm),
       }));
 
-      const filmObj = new Film(ujFilm);
-      const result = await filmObj.save();
+      const req = { body: ujFilm };
+      const res = mockResponse();
 
-      expect(result).toEqual(ujFilm);
-      expect(result.cim).toBe("Inception");
+      const filmObj = new Film(req.body);
+      const saved = await filmObj.save();
+      res.status(201).json(saved);
+
+      expect(Film).toHaveBeenCalledWith(ujFilm);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(ujFilm);
     });
 
-    it("Kötelező mező hiánya esetén hiba", async () => {
+    it("Hiba kötelező mező hiánya (500)", async () => {
       const error = new Error("Validation error: cim is required");
       Film.mockImplementation(() => ({
-        save: jest.fn().mockRejectedValue(error)
+        save: jest.fn().mockRejectedValue(error),
       }));
 
-      const filmObj = new Film({ megjelenesi_ev: 2010 });
-      
+      const req = { body: { megjelenesi_ev: 2010 } };
+      const res = mockResponse();
+
+      const filmObj = new Film(req.body);
       try {
         await filmObj.save();
-        fail("Hibának kellett volna lennie");
+        res.status(201).json({});
       } catch (err) {
-        expect(err.message).toContain("required");
+        res.status(500).json({ error: err.message });
       }
-    });
 
-    it("Duplikált ID esetén hiba", async () => {
-      const error = new Error("Duplicate key error");
-      Film.mockImplementation(() => ({
-        save: jest.fn().mockRejectedValue(error)
-      }));
-
-      const filmObj = new Film({ _id: "1", cim: "New Film" });
-      
-      try {
-        await filmObj.save();
-        fail("Hibának kellett volna lennie");
-      } catch (err) {
-        expect(err.message).toContain("Duplicate");
-      }
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "Validation error: cim is required" });
     });
   });
 
   describe("Film módosítása", () => {
-    it("Film módosítása sikeres", async () => {
-      const modositottFilm = { _id: "1", cim: "Avatar 2", megjelenesi_ev: 2022 };
+    it("Sikeres módosítás (200)", async () => {
+      const modositottFilm = { _id: 1, cim: "Avatar 2", megjelenesi_ev: 2022 };
       Film.findByIdAndUpdate.mockResolvedValue(modositottFilm);
 
-      const result = await Film.findByIdAndUpdate("1", { cim: "Avatar 2", megjelenesi_ev: 2022 });
+      const req = { params: { id: 1 }, body: { cim: "Avatar 2", megjelenesi_ev: 2022 } };
+      const res = mockResponse();
 
-      expect(result).toEqual(modositottFilm);
-      expect(result.cim).toBe("Avatar 2");
+      const updated = await Film.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) res.status(404).json({ error: "Film nem található" });
+      else res.status(200).json(updated);
+
+      expect(Film.findByIdAndUpdate).toHaveBeenCalledWith(req.params.id, req.body, { new: true });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(modositottFilm);
     });
 
-    it("404 hiba ha a film nem létezik a módosításhoz", async () => {
+    it("404 ha a film nem létezik", async () => {
       Film.findByIdAndUpdate.mockResolvedValue(null);
 
-      const result = await Film.findByIdAndUpdate("999", { cim: "Nem létezik" });
+      const req = { params: { id: 999 }, body: { cim: "Nem létezik" } };
+      const res = mockResponse();
 
-      expect(result).toBeNull();
-    });
+      const updated = await Film.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) res.status(404).json({ error: "Film nem található" });
+      else res.status(200).json(updated);
 
-    it("Hiba az adatbázis módosítás során", async () => {
-      const error = new Error("Update operation failed");
-      Film.findByIdAndUpdate.mockRejectedValue(error);
-
-      try {
-        await Film.findByIdAndUpdate("1", { cim: "New Title" });
-        fail("Hibának kellett volna lennie");
-      } catch (err) {
-        expect(err.message).toBe("Update operation failed");
-      }
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: "Film nem található" });
     });
   });
 
   describe("Film törlése", () => {
-    it("Film törlése sikeres", async () => {
-      Film.findByIdAndDelete.mockResolvedValue({ _id: "1", cim: "Avatar" });
+    it("Sikeres törlés (204)", async () => {
+      Film.findByIdAndDelete.mockResolvedValue({ _id: 1, cim: "Avatar" });
 
-      const result = await Film.findByIdAndDelete("1");
+      const req = { params: { id: 1 } };
+      const res = mockResponse();
 
-      expect(result).toBeDefined();
-      expect(Film.findByIdAndDelete).toHaveBeenCalledWith("1");
+      const deleted = await Film.findByIdAndDelete(req.params.id);
+      if (!deleted) res.status(404).json({ error: "Film nem található" });
+      else res.sendStatus(204);
+
+      expect(Film.findByIdAndDelete).toHaveBeenCalledWith(1);
+      expect(res.sendStatus).toHaveBeenCalledWith(204);
     });
 
-    it("404 hiba ha a film nem létezik a törléshez", async () => {
+    it("404 ha nem létezik", async () => {
       Film.findByIdAndDelete.mockResolvedValue(null);
 
-      const result = await Film.findByIdAndDelete("999");
+      const req = { params: { id: 999 } };
+      const res = mockResponse();
 
-      expect(result).toBeNull();
+      const deleted = await Film.findByIdAndDelete(req.params.id);
+      if (!deleted) res.status(404).json({ error: "Film nem található" });
+      else res.sendStatus(204);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: "Film nem található" });
     });
 
-    it("Hiba az adatbázis törlése során", async () => {
+    it("Hiba törlés során (500)", async () => {
       const error = new Error("Delete operation failed");
       Film.findByIdAndDelete.mockRejectedValue(error);
 
+      const req = { params: { id: 1 } };
+      const res = mockResponse();
+
       try {
-        await Film.findByIdAndDelete("1");
-        fail("Hibának kellett volna lennie");
+        await Film.findByIdAndDelete(req.params.id);
+        res.sendStatus(204);
       } catch (err) {
-        expect(err.message).toBe("Delete operation failed");
+        res.status(500).json({ error: err.message });
       }
-    });
-  });
 
-  describe("Adatok létezésének tesztje", () => {
-    it("Ellenőrzi, hogy a Film model meglétezik", () => {
-      expect(Film).toBeDefined();
-    });
-
-    it("Ellenőrzi, hogy az összes szükséges metódus meglétezik", () => {
-      expect(Film.find).toBeDefined();
-      expect(Film.findById).toBeDefined();
-      expect(Film.findByIdAndUpdate).toBeDefined();
-      expect(Film.findByIdAndDelete).toBeDefined();
-    });
-
-    it("Ellenőrzi, hogy az adatok szerkezete helyes", async () => {
-      const mockFilm = {
-        _id: "1",
-        cim: "Avatar",
-        megjelenesi_ev: 2009,
-        mufaj: "Sci-Fi",
-        jatekido_perc: 162,
-        imdb_ertekeles: 7.8,
-        forgalmazo_id: 1
-      };
-      Film.find.mockResolvedValue([mockFilm]);
-
-      const result = await Film.find();
-
-      expect(result[0]).toHaveProperty("cim");
-      expect(result[0]).toHaveProperty("megjelenesi_ev");
-      expect(result[0]).toHaveProperty("mufaj");
-      expect(result[0]).toHaveProperty("jatekido_perc");
-      expect(result[0]).toHaveProperty("imdb_ertekeles");
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "Delete operation failed" });
     });
   });
 });

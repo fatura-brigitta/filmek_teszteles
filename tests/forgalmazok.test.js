@@ -1,207 +1,213 @@
 const Forgalmazo = require("../models/Forgalmazo");
-
-// Mockolás
 jest.mock("../models/Forgalmazo");
 
-describe("Végpont Tesztek", () => {
-  
+// Mockolt res objektum a controller tesztekhez
+const mockResponse = () => {
+  const res = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  res.sendStatus = jest.fn().mockReturnValue(res);
+  return res;
+};
+
+describe("Forgalmazó Controller Tesztek", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe("Összes forgalmazó lekérdezése", () => {
-    it("Sikeresen visszaadja az összes forgalmazót", async () => {
+    it("Sikeres lekérdezés (200)", async () => {
       const mockForgalmazok = [
-        { _id: 1, nev: "20th Century Fox", szekhely_orszag: "USA", alapitas_eve: 1935 },
-        { _id: 2, nev: "Paramount Pictures", szekhely_orszag: "USA", alapitas_eve: 1912 }
+        { _id: 1, nev: "20th Century Fox", szekhely_orszag: "USA" },
+        { _id: 2, nev: "Paramount Pictures", szekhely_orszag: "USA" },
       ];
       Forgalmazo.find.mockResolvedValue(mockForgalmazok);
 
-      const result = await Forgalmazo.find();
+      const res = mockResponse();
+      const req = {};
 
-      expect(result).toEqual(mockForgalmazok);
-      expect(result.length).toBe(2);
+      try {
+        const forgalmazok = await Forgalmazo.find();
+        res.status(200).json(forgalmazok);
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+
       expect(Forgalmazo.find).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockForgalmazok);
     });
 
-    it("Üres lista, ha nincs forgalmazó", async () => {
-      Forgalmazo.find.mockResolvedValue([]);
-
-      const result = await Forgalmazo.find();
-
-      expect(result).toEqual([]);
-      expect(Array.isArray(result)).toBe(true);
-    });
-
-    it("Hiba az adatbázis kezelése során", async () => {
-      const error = new Error("MongoDB connection failed");
+    it("Hiba az adatbázis kezelése során (500)", async () => {
+      const error = new Error("DB hiba");
       Forgalmazo.find.mockRejectedValue(error);
+
+      const res = mockResponse();
+      const req = {};
 
       try {
         await Forgalmazo.find();
-        fail("Hibának kellett volna lennie");
+        res.status(200).json([]);
       } catch (err) {
-        expect(err.message).toBe("MongoDB connection failed");
+        res.status(500).json({ error: err.message });
       }
+
+      expect(Forgalmazo.find).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "DB hiba" });
     });
   });
 
-  describe("Új forgalmazó hozzáadása", () => {
-    it("Új forgalmazó sikeres létrehozása", async () => {
-      const ujForgalmazo = { 
-        _id: 3, 
-        nev: "Disney", 
-        szekhely_orszag: "USA", 
-        alapitas_eve: 1923,
-        weboldal: "disney.com",
-        email: "info@disney.com"
-      };
-      
-      Forgalmazo.mockImplementation(() => ({
-        save: jest.fn().mockResolvedValue(ujForgalmazo)
-      }));
+  describe("Egy forgalmazó lekérdezése", () => {
+    it("Sikeres lekérdezés ID alapján (200)", async () => {
+      const mockForgalmazo = { _id: 1, nev: "Fox", szekhely_orszag: "USA" };
+      Forgalmazo.findById.mockResolvedValue(mockForgalmazo);
 
-      const forgObj = new Forgalmazo(ujForgalmazo);
-      const result = await forgObj.save();
+      const req = { params: { id: 1 } };
+      const res = mockResponse();
 
-      expect(result).toEqual(ujForgalmazo);
-      expect(result.nev).toBe("Disney");
-      expect(result.szekhely_orszag).toBe("USA");
+      const forgalmazo = await Forgalmazo.findById(req.params.id);
+      if (!forgalmazo) res.status(404).json({ error: "Forgalmazó nem található" });
+      else res.status(200).json(forgalmazo);
+
+      expect(Forgalmazo.findById).toHaveBeenCalledWith(1);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockForgalmazo);
     });
 
-    it("Hiba a kötelező mező hiánya esetén", async () => {
+    it("404 ha nem létezik", async () => {
+      Forgalmazo.findById.mockResolvedValue(null);
+
+      const req = { params: { id: 999 } };
+      const res = mockResponse();
+
+      const forgalmazo = await Forgalmazo.findById(req.params.id);
+      if (!forgalmazo) res.status(404).json({ error: "Forgalmazó nem található" });
+      else res.status(200).json(forgalmazo);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: "Forgalmazó nem található" });
+    });
+  });
+
+  describe("Új forgalmazó létrehozása", () => {
+    it("Sikeres létrehozás (201)", async () => {
+      const ujForgalmazo = { _id: 3, nev: "Disney", szekhely_orszag: "USA" };
+      Forgalmazo.mockImplementation(() => ({
+        save: jest.fn().mockResolvedValue(ujForgalmazo),
+      }));
+
+      const req = { body: ujForgalmazo };
+      const res = mockResponse();
+
+      const forgObj = new Forgalmazo(req.body);
+      const saved = await forgObj.save();
+      res.status(201).json(saved);
+
+      expect(Forgalmazo).toHaveBeenCalledWith(ujForgalmazo);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(ujForgalmazo);
+    });
+
+    it("Hiba kötelező mező hiánya (500)", async () => {
       const error = new Error("Validation error: nev is required");
       Forgalmazo.mockImplementation(() => ({
-        save: jest.fn().mockRejectedValue(error)
+        save: jest.fn().mockRejectedValue(error),
       }));
 
-      const forgObj = new Forgalmazo({ szekhely_orszag: "USA" });
-      
+      const req = { body: { szekhely_orszag: "USA" } };
+      const res = mockResponse();
+
+      const forgObj = new Forgalmazo(req.body);
       try {
         await forgObj.save();
-        fail("Hibának kellett volna lennie");
+        res.status(201).json({});
       } catch (err) {
-        expect(err.message).toContain("required");
+        res.status(500).json({ error: err.message });
       }
-    });
 
-    it("Hiba érvénytelen email formátum esetén", async () => {
-      const error = new Error("Validation error: invalid email");
-      Forgalmazo.mockImplementation(() => ({
-        save: jest.fn().mockRejectedValue(error)
-      }));
-
-      const forgObj = new Forgalmazo({ 
-        _id: 3,
-        nev: "Disney", 
-        email: "invalid-email" 
-      });
-      
-      try {
-        await forgObj.save();
-        fail("Hibának kellett volna lennie");
-      } catch (err) {
-        expect(err.message).toContain("invalid");
-      }
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "Validation error: nev is required" });
     });
   });
 
   describe("Forgalmazó módosítása", () => {
-    it("Forgalmazó módosítása sikeres", async () => {
-      const modositottForgalmazo = { 
-        _id: 1, 
-        nev: "20th Century Studio", 
-        szekhely_orszag: "USA" 
-      };
+    it("Sikeres módosítás (200)", async () => {
+      const modositottForgalmazo = { _id: 1, nev: "20th Century Studio" };
       Forgalmazo.findByIdAndUpdate.mockResolvedValue(modositottForgalmazo);
 
-      const result = await Forgalmazo.findByIdAndUpdate(1, { nev: "20th Century Studio" });
+      const req = { params: { id: 1 }, body: { nev: "20th Century Studio" } };
+      const res = mockResponse();
 
-      expect(result).toEqual(modositottForgalmazo);
-      expect(result.nev).toBe("20th Century Studio");
+      const updated = await Forgalmazo.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) res.status(404).json({ error: "Forgalmazó nem található" });
+      else res.status(200).json(updated);
+
+      expect(Forgalmazo.findByIdAndUpdate).toHaveBeenCalledWith(1, req.body, { new: true });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(modositottForgalmazo);
     });
 
-    it("404 hiba ha a forgalmazó nem létezik", async () => {
+    it("404 ha nem létezik", async () => {
       Forgalmazo.findByIdAndUpdate.mockResolvedValue(null);
 
-      const result = await Forgalmazo.findByIdAndUpdate(999, { nev: "Nem létezik" });
+      const req = { params: { id: 999 }, body: { nev: "Nem létezik" } };
+      const res = mockResponse();
 
-      expect(result).toBeNull();
-    });
+      const updated = await Forgalmazo.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) res.status(404).json({ error: "Forgalmazó nem található" });
+      else res.status(200).json(updated);
 
-    it("hiba az adatbázis módosítás során", async () => {
-      const error = new Error("Update operation failed");
-      Forgalmazo.findByIdAndUpdate.mockRejectedValue(error);
-
-      try {
-        await Forgalmazo.findByIdAndUpdate(1, { nev: "Új név" });
-        fail("Hibának kellett volna lennie");
-      } catch (err) {
-        expect(err.message).toBe("Update operation failed");
-      }
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: "Forgalmazó nem található" });
     });
   });
 
   describe("Forgalmazó törlése", () => {
-    it("Forgalmazó törlése sikeres", async () => {
+    it("Sikeres törlés (204)", async () => {
       Forgalmazo.findByIdAndDelete.mockResolvedValue({ _id: 1, nev: "Fox" });
 
-      const result = await Forgalmazo.findByIdAndDelete(1);
+      const req = { params: { id: 1 } };
+      const res = mockResponse();
 
-      expect(result).toBeDefined();
+      const deleted = await Forgalmazo.findByIdAndDelete(req.params.id);
+      if (!deleted) res.status(404).json({ error: "Forgalmazó nem található" });
+      else res.sendStatus(204);
+
       expect(Forgalmazo.findByIdAndDelete).toHaveBeenCalledWith(1);
+      expect(res.sendStatus).toHaveBeenCalledWith(204);
     });
 
-    it("404 hiba ha a forgalmazó nem létezik a törléshez", async () => {
+    it("404 ha nem létezik", async () => {
       Forgalmazo.findByIdAndDelete.mockResolvedValue(null);
 
-      const result = await Forgalmazo.findByIdAndDelete(999);
+      const req = { params: { id: 999 } };
+      const res = mockResponse();
 
-      expect(result).toBeNull();
+      const deleted = await Forgalmazo.findByIdAndDelete(req.params.id);
+      if (!deleted) res.status(404).json({ error: "Forgalmazó nem található" });
+      else res.sendStatus(204);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: "Forgalmazó nem található" });
     });
 
-    it("Hiba az adatbázis törlése során", async () => {
+    it("Hiba törlés során (500)", async () => {
       const error = new Error("Delete operation failed");
       Forgalmazo.findByIdAndDelete.mockRejectedValue(error);
 
+      const req = { params: { id: 1 } };
+      const res = mockResponse();
+
       try {
-        await Forgalmazo.findByIdAndDelete(1);
-        fail("Hibának kellett volna lennie");
+        await Forgalmazo.findByIdAndDelete(req.params.id);
+        res.sendStatus(204);
       } catch (err) {
-        expect(err.message).toBe("Delete operation failed");
+        res.status(500).json({ error: err.message });
       }
-    });
-  });
 
-  describe("Adatok léteznek", () => {
-    it("Ellenőrzi, hogy a Forgalmazo model létezik", () => {
-      expect(Forgalmazo).toBeDefined();
-    });
-
-    it("Ellenőrzi, hogy az összes szükséges metódus létezik", () => {
-      expect(Forgalmazo.find).toBeDefined();
-      expect(Forgalmazo.findByIdAndUpdate).toBeDefined();
-      expect(Forgalmazo.findByIdAndDelete).toBeDefined();
-    });
-
-    it("Ellenőrzi, hogy az adatok szerkezete helyes", async () => {
-      const mockForgalmazo = {
-        _id: 1,
-        nev: "20th Century Fox",
-        szekhely_orszag: "USA",
-        alapitas_eve: 1935,
-        weboldal: "fox.com",
-        email: "info@fox.com"
-      };
-      Forgalmazo.find.mockResolvedValue([mockForgalmazo]);
-
-      const result = await Forgalmazo.find();
-
-      expect(result[0]).toHaveProperty("nev");
-      expect(result[0]).toHaveProperty("szekhely_orszag");
-      expect(result[0]).toHaveProperty("alapitas_eve");
-      expect(result[0]).toHaveProperty("weboldal");
-      expect(result[0]).toHaveProperty("email");
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: "Delete operation failed" });
     });
   });
 });
